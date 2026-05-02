@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hintsiders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f7f3ea;
+    --ink: #1a1714;
+    --ink-soft: #6b6358;
+    --ink-faint: #b4ab9c;
+    --ink-ghost: #ddd5c4;
+    --rule: #d8d0bd;
+    --pen-blue: #1a2747;
+    --burgundy: #7a2418;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--paper); color: var(--ink); font-family: 'Cormorant Garamond', Georgia, serif; font-size: 17px; line-height: 1.5; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--paper); border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); position: relative; }
+
+  .top-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; background: var(--paper); position: sticky; top: 0; z-index: 10; }
+  .top-bar .left { display: flex; align-items: center; gap: 10px; }
+  .top-bar .mark { width: 24px; height: 24px; cursor: pointer; }
+  .group-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; background: none; border: none; padding: 4px 0; }
+  .group-name::after { content: ' ⌄'; color: var(--ink-faint); }
+  .icon-btn { background: none; border: none; cursor: pointer; color: var(--ink-soft); font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; padding: 4px 0; }
+  .icon-btn:hover, .group-name:hover { color: var(--burgundy); }
+
+  /* WORDMARK — JS positions the burgundy i-tittle */
+  .wordmark-block { text-align: center; padding: 18px 0 6px; }
+  .wordmark-display {
+    font-family: 'Caveat', cursive;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1;
+    letter-spacing: -0.005em;
+    display: inline-block;
+    position: relative;
+    font-size: 46px;
+  }
+  .wordmark-display.large { font-size: 72px; }
+  .wordmark-display .ı { display: inline-block; position: relative; }
+  .burgundy-dot { position: absolute; background: var(--burgundy); border-radius: 50%; pointer-events: none; }
+  .tagline { font-style: italic; color: var(--ink-soft); margin-top: 8px; font-size: 14px; }
+  .tagline.large { font-size: 16px; }
+  .round-num { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-faint); margin-top: 14px; }
+
+  .round-header { padding: 0 32px 18px; text-align: center; }
+  .setter-cat { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 16px; padding-top: 18px; }
+  .setter-cat strong { color: var(--ink); font-weight: 500; }
+  .framing { font-style: italic; font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
+  .framing strong { font-style: normal; font-weight: 500; color: var(--ink); }
+  .framing em { color: var(--ink); }
+
+  .meta-row { display: flex; justify-content: space-between; padding: 14px 32px; margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .meta-row strong { color: var(--ink-soft); font-weight: 500; }
+
+  .hints { padding: 16px 36px 20px; }
+  .hint-line { display: flex; align-items: baseline; gap: 18px; padding: 16px 0; min-height: 56px; }
+  .hint-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; width: 18px; flex-shrink: 0; padding-top: 14px; }
+  .hint-word { flex: 1; font-family: 'Caveat', cursive; font-size: 38px; font-weight: 500; color: var(--pen-blue); line-height: 1.1; }
+  .hint-word .letter { display: inline-block; opacity: 0; animation: ink-bleed 0.18s forwards; }
+  @keyframes ink-bleed { 0% { opacity: 0; filter: blur(2px); } 100% { opacity: 1; filter: blur(0); } }
+  .hint-line.locked .hint-word { color: var(--ink-ghost); font-size: 32px; }
+  .hint-day { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.15em; text-transform: uppercase; padding-top: 20px; white-space: nowrap; }
+
+  .guess-section { padding: 20px 36px 16px; border-top: 1px solid var(--rule); }
+  .guess-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px; }
+  .guess-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--ink-soft); padding: 4px 0 8px; font-family: 'Caveat', cursive; font-size: 28px; color: var(--pen-blue); outline: none; }
+  .guess-input::placeholder { color: var(--ink-ghost); font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 18px; }
+  .guess-input:disabled { opacity: 0.5; }
+  .guess-help { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.15em; margin-top: 8px; text-transform: uppercase; }
+
+  .feed { padding: 14px 36px 32px; }
+  .guess-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; gap: 12px; }
+  .guess-row .who { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-faint); min-width: 56px; flex-shrink: 0; }
+  .guess-row .what { flex: 1; font-family: 'Caveat', cursive; font-size: 22px; color: var(--pen-blue); }
+  .guess-row .what.wrong { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--ink-ghost); }
+  .guess-row .what.correct { color: var(--burgundy); }
+  .guess-row .when { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.1em; flex-shrink: 0; }
+  .override-btn { background: none; border: 1px solid var(--ink-ghost); padding: 2px 8px; font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; border-radius: 2px; }
+  .override-btn:hover { border-color: var(--burgundy); color: var(--burgundy); }
+
+  .reveal-header { text-align: center; padding: 40px 32px 8px; }
+  .reveal-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 16px; }
+  .reveal-answer { font-family: 'Caveat', cursive; font-size: 60px; font-weight: 600; line-height: 1; color: var(--pen-blue); margin-bottom: 24px; }
+  .reveal-hints { padding: 16px 36px 8px; }
+  .reveal-hint { display: flex; align-items: baseline; gap: 18px; padding: 8px 0; }
+  .reveal-hint .num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); width: 18px; }
+  .reveal-hint .word { font-family: 'Caveat', cursive; font-size: 28px; color: var(--pen-blue); line-height: 1.1; }
+  .reveal-hint .word.unlit { color: var(--ink-ghost); font-size: 22px; }
+  .annotation { margin: 2px 36px 8px 70px; padding: 6px 0; font-style: italic; font-size: 14px; color: var(--ink-soft); line-height: 1.4; cursor: pointer; }
+  .annotation:hover { color: var(--ink); }
+  .annotation::before { content: '— '; color: var(--ink-faint); }
+  .annotation.empty { color: var(--ink-faint); font-size: 13px; }
+  .winner-line { text-align: center; padding: 28px 32px 36px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); }
+  .winner-line .name { font-family: 'Caveat', cursive; font-size: 28px; color: var(--pen-blue); display: block; margin: 6px 0 4px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+  .archive-list { padding: 8px 32px 40px; }
+  .archive-entry { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
+  .archive-entry:hover .entry-answer { color: var(--burgundy); }
+  .entry-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; }
+  .entry-mid { display: flex; flex-direction: column; gap: 2px; }
+  .entry-answer { font-family: 'Caveat', cursive; font-size: 22px; color: var(--ink); transition: color 0.2s; line-height: 1.1; }
+  .entry-meta { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); }
+  .entry-stat { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); text-align: right; }
+  .entry-stat .small { font-size: 9px; color: var(--ink-faint); letter-spacing: 0.15em; display: block; }
+
+  .auth-screen { padding: 60px 32px; text-align: center; }
+  .auth-screen .auth-mark { margin: 0 auto 14px; }
+  .auth-screen p { font-style: italic; color: var(--ink-soft); margin: 22px 0 32px; line-height: 1.6; }
+  .input-block { margin-bottom: 16px; text-align: left; }
+  .input-block label { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 6px; }
+  .input-block input, .input-block select, .input-block textarea { width: 100%; background: var(--paper); border: 1px solid var(--rule); padding: 10px 12px; font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--ink); outline: none; border-radius: 3px; }
+  .input-block input:focus, .input-block select:focus, .input-block textarea:focus { border-color: var(--ink-soft); }
+  .btn { display: inline-block; background: var(--ink); color: var(--paper); border: none; padding: 12px 28px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer; border-radius: 2px; margin-top: 8px; }
+  .btn:hover { background: var(--burgundy); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost { background: none; color: var(--ink-soft); border: 1px solid var(--rule); }
+  .btn-ghost:hover { background: var(--paper); color: var(--ink); }
+
+  .empty-state { padding: 60px 32px; text-align: center; }
+  .empty-state h2 { font-style: italic; font-size: 22px; color: var(--ink); margin-bottom: 8px; }
+  .empty-state p { color: var(--ink-soft); font-style: italic; line-height: 1.6; margin-bottom: 24px; }
+
+  .compose-screen { padding: 8px 0 40px; }
+  .compose-block { padding: 18px 32px 6px; }
+  .compose-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+  .compose-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--ink-ghost); padding: 4px 0 8px; font-family: 'Caveat', cursive; font-size: 30px; color: var(--pen-blue); outline: none; }
+  .compose-input.with-text { border-bottom-color: var(--ink-soft); }
+  .compose-input::placeholder { color: var(--ink-ghost); font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 18px; }
+  .compose-input.compose-answer-input { font-size: 26px; }
+  .compose-actions { padding: 28px 32px 0; display: flex; gap: 12px; justify-content: center; }
+  .compose-actions .btn { margin-top: 0; }
+
+  .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 12px 20px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; border-radius: 3px; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 100; }
+  .toast.show { opacity: 1; }
+  .group-switcher { position: absolute; top: 56px; left: 22px; right: 22px; background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; box-shadow: 0 12px 30px rgba(0,0,0,0.1); z-index: 20; padding: 8px 0; display: none; }
+  .group-switcher.open { display: block; }
+  .switcher-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 10px 18px; font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--ink); cursor: pointer; font-style: italic; }
+  .switcher-item:hover { background: var(--paper); color: var(--burgundy); }
+  .switcher-item.active { color: var(--burgundy); }
+  .switcher-divider { height: 1px; background: var(--rule); margin: 6px 0; }
+
+  .ink-stroke { stroke: var(--pen-blue); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .knob { fill: var(--burgundy); stroke: var(--burgundy); }
+
+  .loading { padding: 80px 32px; text-align: center; color: var(--ink-faint); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="loading">opening…</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = window.SUPABASE_URL || 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  user: null,
+  profile: null,
+  groups: [],
+  currentGroupId: null,
+  view: 'loading',
+  activeRound: null,
+  hints: [],
+  guesses: [],
+  archive: [],
+  members: [],
+  compose: { answer: '', category: 'person', drafts: ['','','','',''] },
+  switcherOpen: false,
+};
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const FRAMINGS = {
+  person: 'someone you all know',
+  place: "somewhere you've all been",
+  song: "something you've all heard",
+  movie: "something you've all seen",
+  moment: 'something that happened',
+};
+const SLOT_GUIDANCE = ['vague', 'place or era', 'a connection', 'narrowing', 'giveaway'];
+const DAYS = ['sun','mon','tue','wed','thu','fri','sat'];
+
+const $app = document.getElementById('app');
+const $toast = document.getElementById('toast');
+function toast(msg) { $toast.textContent = msg; $toast.classList.add('show'); setTimeout(() => $toast.classList.remove('show'), 2200); }
+function escape(s) { const div = document.createElement('div'); div.textContent = s ?? ''; return div.innerHTML; }
+function relTime(iso) { const t = new Date(iso); const h = t.getHours(); const m = String(t.getMinutes()).padStart(2,'0'); const ampm = h>=12?'p':'a'; const hh = ((h+11)%12)+1; return `${hh}:${m}${ampm}`; }
+function dayShort(iso) { return DAYS[new Date(iso).getDay()]; }
+
+// ============================================================
+// MARK SVG
+// ============================================================
+const MARK_SVG = (size = 24, strokeBase = 3.4) => `
+<svg class="mark" width="${size}" height="${size}" viewBox="0 0 120 120">
+  <path class="ink-stroke" stroke-width="${strokeBase}" d="M 41 32 Q 26 39 28 58 Q 27 74 39 83 L 35 98 L 89 96 L 84 78 Q 98 71 94 51 Q 97 30 73 25 Q 51 22 41 32 Q 43 31 42 33"/>
+  <path class="ink-stroke" stroke-width="${(strokeBase * 0.76).toFixed(2)}" d="M 30 48 L 31 72 L 47 70 L 45 47 L 30 49"/>
+  ${size >= 60 ? `<path class="ink-stroke" stroke-width="${(strokeBase * 0.5).toFixed(2)}" opacity="0.5" d="M 31 49 L 32 71 L 46 70"/>` : ''}
+  <ellipse class="knob" stroke-width="${(strokeBase * 0.6).toFixed(2)}" cx="42" cy="61" rx="${size >= 60 ? 2 : 2.6}" ry="${size >= 60 ? 1.7 : 2.2}"/>
+  ${size >= 60 ? `<circle fill="var(--pen-blue)" cx="76" cy="35" r="0.6" opacity="0.5"/>` : ''}
+</svg>`;
+
+// ============================================================
+// WORDMARK
+// ============================================================
+function wordmarkHtml(large = false) {
+  return `<span class="wordmark-display ${large?'large':''}">h<span class="ı">ı</span>ntsiders<span class="burgundy-dot"></span></span>`;
+}
+
+function placeBurgundyDot(wordmarkEl) {
+  const fontSize = parseFloat(getComputedStyle(wordmarkEl).fontSize);
+  const dot = wordmarkEl.querySelector('.burgundy-dot');
+  const dotlessI = wordmarkEl.querySelector('.ı');
+  if (!dot || !dotlessI) return;
+  const dotW = fontSize * 0.10;
+  const dotH = fontSize * 0.085;
+  const stemRect = dotlessI.getBoundingClientRect();
+  const wordRect = wordmarkEl.getBoundingClientRect();
+  const left = (stemRect.left - wordRect.left) + (stemRect.width / 2) - (dotW / 2) + (fontSize * 0.12);
+  const top = (stemRect.top - wordRect.top) + (fontSize * 0.30);
+  dot.style.width = dotW + 'px';
+  dot.style.height = dotH + 'px';
+  dot.style.left = left + 'px';
+  dot.style.top = top + 'px';
+  dot.style.transform = 'rotate(-8deg)';
+}
+function placeAllDots() {
+  document.querySelectorAll('.wordmark-display').forEach(placeBurgundyDot);
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+async function init() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user) { state.user = session.user; await loadProfile(); }
+  else { state.view = 'auth'; render(); }
+  supabase.auth.onAuthStateChange(async (_e, sess) => {
+    if (sess?.user) { state.user = sess.user; await loadProfile(); }
+    else { state.user = null; state.profile = null; state.view = 'auth'; render(); }
+  });
+}
+
+async function loadProfile() {
+  const { data } = await supabase.from('profiles').select('*').eq('id', state.user.id).maybeSingle();
+  if (!data) { state.view = 'set-name'; render(); return; }
+  state.profile = data;
+  await loadGroups();
+}
+async function saveName(name) {
+  await supabase.from('profiles').upsert({ id: state.user.id, display_name: name });
+  await loadProfile();
+}
+async function sendMagicLink(email) {
+  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+  if (error) { toast(error.message); return false; }
+  return true;
+}
+async function signOut() { await supabase.auth.signOut(); }
+
+// ============================================================
+// GROUPS
+// ============================================================
+async function loadGroups() {
+  const { data: memberships } = await supabase.from('group_members').select('group_id, groups(*)').eq('profile_id', state.user.id);
+  state.groups = (memberships || []).map(m => m.groups).filter(Boolean);
+  if (state.groups.length === 0) { state.view = 'no-groups'; render(); return; }
+  if (!state.currentGroupId || !state.groups.find(g => g.id === state.currentGroupId)) {
+    state.currentGroupId = state.groups[0].id;
+  }
+  await loadGroupContext();
+}
+async function createGroup(name, hour, tz) {
+  const { data: g, error } = await supabase.from('groups').insert({ name, created_by: state.user.id, hint_drop_hour: hour, timezone: tz }).select().single();
+  if (error) { toast(error.message); return; }
+  await supabase.from('group_members').insert({ group_id: g.id, profile_id: state.user.id });
+  state.currentGroupId = g.id;
+  await loadGroups();
+}
+async function joinGroup(code) {
+  const { data: g, error } = await supabase.from('groups').select('*').eq('invite_code', code.trim()).maybeSingle();
+  if (error || !g) { toast('group not found'); return; }
+  await supabase.from('group_members').insert({ group_id: g.id, profile_id: state.user.id });
+  state.currentGroupId = g.id;
+  await loadGroups();
+}
+async function loadGroupContext() {
+  const gid = state.currentGroupId;
+  const { data: mems } = await supabase.from('group_members').select('profile_id, profiles(*)').eq('group_id', gid);
+  state.members = (mems || []).map(m => m.profiles).filter(Boolean);
+  const { data: draft } = await supabase.from('rounds').select('*').eq('group_id', gid).eq('setter_id', state.user.id).eq('status', 'drafting').maybeSingle();
+  const { data: active } = await supabase.from('rounds').select('*').eq('group_id', gid).eq('status', 'active').maybeSingle();
+  const { data: lastDone } = await supabase.from('rounds').select('*').eq('group_id', gid).in('status', ['solved','unsolved']).order('solved_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  if (draft) {
+    state.activeRound = draft;
+    await loadHints(draft.id);
+    state.compose.answer = draft.answer === 'PENDING' ? '' : draft.answer;
+    state.compose.category = draft.category;
+    state.compose.drafts = [0,1,2,3,4].map(i => state.hints.find(h => h.position === i+1)?.text ?? '');
+    state.view = 'compose';
+  } else if (active) {
+    state.activeRound = active;
+    await loadHints(active.id);
+    await loadGuesses(active.id);
+    state.view = 'home';
+    subscribeToRound(active.id);
+  } else if (lastDone) {
+    state.activeRound = lastDone;
+    await loadHints(lastDone.id);
+    state.view = 'reveal';
+  } else {
+    state.activeRound = null;
+    state.view = 'home';
+  }
+  render();
+}
+async function loadHints(roundId) {
+  const { data } = await supabase.from('hints').select('*').eq('round_id', roundId).order('position');
+  state.hints = data || [];
+}
+async function loadGuesses(roundId) {
+  const { data } = await supabase.from('guesses').select('*, profiles(display_name)').eq('round_id', roundId).order('created_at');
+  state.guesses = data || [];
+}
+async function loadArchive() {
+  const { data } = await supabase.from('rounds').select('*, profiles!rounds_setter_id_fkey(display_name)').eq('group_id', state.currentGroupId).in('status', ['solved','unsolved']).order('round_number', { ascending: false });
+  state.archive = data || [];
+}
+
+// ============================================================
+// REALTIME
+// ============================================================
+let channel = null;
+function subscribeToRound(roundId) {
+  if (channel) supabase.removeChannel(channel);
+  channel = supabase.channel(`round:${roundId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async () => {
+      await loadGuesses(roundId);
+      const r = await supabase.from('rounds').select('*').eq('id', roundId).single();
+      state.activeRound = r.data;
+      if (r.data.status !== 'active') { await loadGroupContext(); return; }
+      render();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `id=eq.${roundId}` }, async (p) => {
+      state.activeRound = p.new;
+      await loadHints(roundId);
+      if (p.new.status !== 'active') { await loadGroupContext(); return; }
+      render();
+    })
+    .subscribe();
+}
+
+// ============================================================
+// ROUND ACTIONS
+// ============================================================
+async function startNewRound(category) {
+  const { data: lastRound } = await supabase.from('rounds').select('round_number').eq('group_id', state.currentGroupId).order('round_number', { ascending: false }).limit(1).maybeSingle();
+  const nextNum = (lastRound?.round_number || 0) + 1;
+  const { data: r, error } = await supabase.from('rounds').insert({
+    group_id: state.currentGroupId, setter_id: state.user.id, round_number: nextNum,
+    category, answer: 'PENDING', status: 'drafting',
+  }).select().single();
+  if (error) { toast(error.message); return; }
+  state.activeRound = r;
+  state.compose = { answer: '', category, drafts: ['','','','',''] };
+  state.hints = [];
+  state.view = 'compose';
+  render();
+}
+async function saveComposeDraft() {
+  if (state.compose.answer.trim()) {
+    await supabase.from('rounds').update({ answer: state.compose.answer.trim() }).eq('id', state.activeRound.id);
+  }
+  for (let i = 0; i < 5; i++) {
+    const text = state.compose.drafts[i].trim();
+    if (!text) continue;
+    const existing = state.hints.find(h => h.position === i+1);
+    if (existing) {
+      if (existing.text !== text) {
+        await supabase.from('hints').update({ text }).eq('id', existing.id);
+        existing.text = text;
+      }
+    } else {
+      const { data } = await supabase.from('hints').insert({ round_id: state.activeRound.id, position: i+1, text }).select().single();
+      if (data) state.hints.push(data);
+    }
+  }
+}
+async function submitRound() {
+  if (!state.compose.answer.trim()) { toast('set the answer first'); return; }
+  if (state.compose.drafts.some(d => !d.trim())) { toast('write all 5 hints first'); return; }
+  await saveComposeDraft();
+  const { error } = await supabase.rpc('submit_round', { p_round_id: state.activeRound.id });
+  if (error) { toast(error.message); return; }
+  toast('round live · hint 1 dropped');
+  await loadGroupContext();
+}
+async function abandonDraft() {
+  if (!confirm('Throw out this draft?')) return;
+  await supabase.from('rounds').delete().eq('id', state.activeRound.id);
+  state.activeRound = null;
+  state.compose = { answer: '', category: 'person', drafts: ['','','','',''] };
+  state.hints = [];
+  state.view = 'home';
+  render();
+}
+async function submitGuess(text) {
+  const { data, error } = await supabase.rpc('submit_guess', { p_round_id: state.activeRound.id, p_text: text });
+  if (error) { toast(error.message); return; }
+  if (data?.correct) toast('you got it');
+  await loadGuesses(state.activeRound.id);
+  const { data: r } = await supabase.from('rounds').select('*').eq('id', state.activeRound.id).single();
+  state.activeRound = r;
+  if (r.status !== 'active') { await loadGroupContext(); return; }
+  render();
+}
+async function overrideGuess(guessId) {
+  if (!confirm('Mark this as correct? Round will end.')) return;
+  const { error } = await supabase.rpc('override_guess', { p_guess_id: guessId });
+  if (error) { toast(error.message); return; }
+  await loadGroupContext();
+}
+async function saveAnnotation(hintId, text) {
+  await supabase.from('hints').update({ annotation: text }).eq('id', hintId);
+  await loadHints(state.activeRound.id);
+  render();
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  if (state.view === 'auth') return renderAuth();
+  if (state.view === 'set-name') return renderSetName();
+  if (state.view === 'no-groups') return renderNoGroups();
+  if (state.view === 'create-group') return renderCreateGroup();
+  if (state.view === 'join-group') return renderJoinGroup();
+  if (state.view === 'home') return renderHome();
+  if (state.view === 'compose') return renderCompose();
+  if (state.view === 'reveal') return renderReveal();
+  if (state.view === 'archive') return renderArchive();
+  $app.innerHTML = '<div class="loading">…</div>';
+}
+
+function afterRender() {
+  // Place dots after fonts settle
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => placeAllDots());
+  } else {
+    placeAllDots();
+  }
+}
+
+function renderAuth() {
+  $app.innerHTML = `
+    <div class="auth-screen">
+      <div class="auth-mark">${MARK_SVG(60, 3)}</div>
+      ${wordmarkHtml(true)}
+      <p>Five days. Five hints. One guess each.<br>Try to get <em>inside</em>.</p>
+      <div class="input-block">
+        <label>your email</label>
+        <input id="email-input" type="email" placeholder="you@example.com" />
+      </div>
+      <button class="btn" id="send-link">send magic link</button>
+    </div>`;
+  document.getElementById('send-link').onclick = async () => {
+    const email = document.getElementById('email-input').value.trim();
+    if (!email) return;
+    const ok = await sendMagicLink(email);
+    if (ok) toast('check your email');
+  };
+  afterRender();
+}
+
+function renderSetName() {
+  $app.innerHTML = `
+    <div class="auth-screen">
+      ${wordmarkHtml(true)}
+      <p>What should your friends call you here?</p>
+      <div class="input-block">
+        <label>display name</label>
+        <input id="name-input" type="text" placeholder="first name is fine" />
+      </div>
+      <button class="btn" id="save-name-btn">continue</button>
+    </div>`;
+  document.getElementById('save-name-btn').onclick = async () => {
+    const v = document.getElementById('name-input').value.trim();
+    if (!v) return;
+    await saveName(v);
+  };
+  afterRender();
+}
+
+function renderNoGroups() {
+  $app.innerHTML = `
+    <div class="empty-state">
+      <div style="margin-bottom:14px">${MARK_SVG(60, 3)}</div>
+      ${wordmarkHtml(true)}
+      <p style="margin-top:24px">No group yet. Create one or join with a code.</p>
+      <button class="btn" id="create-grp">create a group</button>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" id="join-grp">join with code</button>
+      <div style="height:32px"></div>
+      <button class="icon-btn" id="signout-btn">sign out</button>
+    </div>`;
+  document.getElementById('create-grp').onclick = () => { state.view = 'create-group'; render(); };
+  document.getElementById('join-grp').onclick = () => { state.view = 'join-group'; render(); };
+  document.getElementById('signout-btn').onclick = signOut;
+  afterRender();
+}
+
+function renderCreateGroup() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  $app.innerHTML = `
+    <div class="auth-screen">
+      ${wordmarkHtml()}
+      <p>What should we call this group?</p>
+      <div class="input-block"><label>group name</label><input id="g-name" type="text" placeholder="stockton crew" /></div>
+      <div class="input-block"><label>daily hint drops at</label>
+        <select id="g-hour">${[...Array(24)].map((_,h)=>`<option value="${h}" ${h===9?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}</select>
+      </div>
+      <div class="input-block"><label>timezone</label><input id="g-tz" type="text" value="${tz}" /></div>
+      <button class="btn" id="g-create">create</button>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" id="g-back">back</button>
+    </div>`;
+  document.getElementById('g-create').onclick = async () => {
+    const name = document.getElementById('g-name').value.trim();
+    if (!name) return;
+    await createGroup(name, parseInt(document.getElementById('g-hour').value), document.getElementById('g-tz').value.trim());
+  };
+  document.getElementById('g-back').onclick = () => { state.view = state.groups.length ? 'home' : 'no-groups'; render(); };
+  afterRender();
+}
+
+function renderJoinGroup() {
+  $app.innerHTML = `
+    <div class="auth-screen">
+      ${wordmarkHtml()}
+      <p>Got an invite code from a friend?</p>
+      <div class="input-block"><label>invite code</label><input id="j-code" type="text" placeholder="8 characters" /></div>
+      <button class="btn" id="j-join">join</button>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" id="j-back">back</button>
+    </div>`;
+  document.getElementById('j-join').onclick = async () => {
+    const c = document.getElementById('j-code').value.trim();
+    if (!c) return;
+    await joinGroup(c);
+  };
+  document.getElementById('j-back').onclick = () => { state.view = state.groups.length ? 'home' : 'no-groups'; render(); };
+  afterRender();
+}
+
+function topBar() {
+  const cur = state.groups.find(g => g.id === state.currentGroupId);
+  return `<div class="top-bar">
+    <div class="left">
+      ${MARK_SVG(24, 3.4)}
+      <button class="group-name" id="grp-btn">${escape(cur?.name || 'hintsiders')}</button>
+    </div>
+    <div style="display:flex;gap:14px">
+      <button class="icon-btn" id="archive-btn">archive</button>
+      <button class="icon-btn" id="menu-btn">⋯</button>
+    </div>
+  </div>
+  <div class="group-switcher ${state.switcherOpen?'open':''}">
+    ${state.groups.map(g => `<button class="switcher-item ${g.id===state.currentGroupId?'active':''}" data-gid="${g.id}">${escape(g.name)}</button>`).join('')}
+    <div class="switcher-divider"></div>
+    <button class="switcher-item" id="sw-create">+ create a group</button>
+    <button class="switcher-item" id="sw-join">+ join with code</button>
+    <div class="switcher-divider"></div>
+    <button class="switcher-item" id="sw-invite">copy invite code</button>
+    <button class="switcher-item" id="sw-signout">sign out</button>
+  </div>`;
+}
+
+function wireTopBar() {
+  document.getElementById('grp-btn').onclick = () => { state.switcherOpen = !state.switcherOpen; render(); };
+  document.getElementById('archive-btn').onclick = async () => { await loadArchive(); state.view = 'archive'; render(); };
+  document.getElementById('menu-btn').onclick = () => { state.switcherOpen = !state.switcherOpen; render(); };
+  state.groups.forEach(g => {
+    const el = document.querySelector(`[data-gid="${g.id}"]`);
+    if (el) el.onclick = async () => { state.currentGroupId = g.id; state.switcherOpen = false; await loadGroupContext(); };
+  });
+  const swc = document.getElementById('sw-create'); if (swc) swc.onclick = () => { state.view = 'create-group'; state.switcherOpen = false; render(); };
+  const swj = document.getElementById('sw-join'); if (swj) swj.onclick = () => { state.view = 'join-group'; state.switcherOpen = false; render(); };
+  const swi = document.getElementById('sw-invite'); if (swi) swi.onclick = () => {
+    const cur = state.groups.find(g => g.id === state.currentGroupId);
+    if (cur) { navigator.clipboard.writeText(cur.invite_code); toast('code copied'); state.switcherOpen = false; render(); }
+  };
+  const sso = document.getElementById('sw-signout'); if (sso) sso.onclick = signOut;
+}
+
+function categoryLabel(cat) {
+  if (cat === 'moment') return 'a moment';
+  const vowels = 'aeiou';
+  return `${vowels.includes(cat[0]) ? 'an' : 'a'} ${cat}`;
+}
+function animateWord(text, animate) {
+  if (!animate) return escape(text);
+  return text.split('').map((c, i) => {
+    const ch = c === ' ' ? '&nbsp;' : escape(c);
+    return `<span class="letter" style="animation-delay:${(i*0.09 + Math.random()*0.06).toFixed(2)}s">${ch}</span>`;
+  }).join('');
+}
+
+function renderHome() {
+  if (!state.activeRound) return renderHomeEmpty();
+  const r = state.activeRound;
+  const isSetter = r.setter_id === state.user.id;
+  const setter = state.members.find(m => m.id === r.setter_id);
+  const framing = FRAMINGS[r.category] || r.category;
+  const myGuessThisHint = state.guesses.find(g => g.guesser_id === state.user.id && g.hint_index_at_guess === r.current_hint_index);
+  const todayGuesses = state.guesses.filter(g => g.hint_index_at_guess === r.current_hint_index);
+
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="wordmark-block">
+      ${wordmarkHtml()}
+      <div class="tagline">you know you know</div>
+      <div class="round-num">round ${r.round_number}</div>
+    </div>
+    <div class="round-header">
+      <div class="setter-cat"><strong>${escape(setter?.display_name || '…')}</strong> · ${categoryLabel(r.category)}</div>
+      <div class="framing">
+        ${escape(setter?.display_name || 'someone')} has something in mind.<br>
+        One hint a day. One guess a day.<br>
+        Try to get <em>inside</em>.
+      </div>
+    </div>
+    <div class="meta-row">
+      <span><strong>day</strong> ${r.current_hint_index} of 5</span>
+      <span><strong>next hint</strong> ${r.next_unlock_at ? new Date(r.next_unlock_at).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'}) : '—'}</span>
+    </div>
+    <div class="hints" id="hint-list">
+      ${[1,2,3,4,5].map(pos => {
+        const h = state.hints.find(x => x.position === pos);
+        const unlocked = pos <= r.current_hint_index;
+        const showText = unlocked || isSetter;
+        const wordHtml = showText && h ? animateWord(h.text, pos === r.current_hint_index && unlocked) : '— — —';
+        return `<div class="hint-line ${unlocked?'':'locked'}">
+          <span class="hint-num">0${pos}</span>
+          <span class="hint-word">${wordHtml}</span>
+          <span class="hint-day">${h?.unlocked_at ? dayShort(h.unlocked_at) : ''}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    ${isSetter ? '' : `
+    <div class="guess-section">
+      <div class="guess-label">your guess · ${myGuessThisHint ? 'used today' : '1 of 1 today'}</div>
+      <input class="guess-input" id="guess-input" placeholder="${myGuessThisHint ? '— wait for the next hint —' : 'who is it…'}" ${myGuessThisHint?'disabled':''} />
+      <div class="guess-help">enter to lock in</div>
+    </div>`}
+    <div class="feed">
+      ${todayGuesses.length === 0 ? `<div style="text-align:center;color:var(--ink-faint);font-style:italic;padding:8px 0">— no guesses yet today —</div>` : todayGuesses.map(g => `
+        <div class="guess-row">
+          <span class="who">${escape(g.profiles?.display_name || '?')}</span>
+          <span class="what ${g.is_correct?'correct':'wrong'}">${escape(g.text)}</span>
+          ${isSetter && !g.is_correct ? `<button class="override-btn" data-gid="${g.id}">count it</button>` : `<span class="when">${relTime(g.created_at)}</span>`}
+        </div>`).join('')}
+    </div>`;
+  wireTopBar();
+  if (!isSetter) {
+    const inp = document.getElementById('guess-input');
+    if (inp && !myGuessThisHint) {
+      inp.addEventListener('keydown', async e => {
+        if (e.key === 'Enter') {
+          const v = inp.value.trim(); if (!v) return;
+          inp.disabled = true;
+          await submitGuess(v);
+        }
+      });
+    }
+  }
+  if (isSetter) {
+    document.querySelectorAll('.override-btn').forEach(b => b.onclick = () => overrideGuess(b.dataset.gid));
+  }
+  afterRender();
+}
+
+function renderHomeEmpty() {
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="wordmark-block" style="padding-top:32px">
+      ${wordmarkHtml()}
+      <div class="tagline">you know you know</div>
+    </div>
+    <div class="empty-state">
+      <h2>no round running</h2>
+      <p>Pick a category to start one.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:240px;margin:0 auto">
+        <button class="btn" data-cat="person">a person</button>
+        <button class="btn" data-cat="place">a place</button>
+        <button class="btn" data-cat="song">a song</button>
+        <button class="btn" data-cat="movie">a movie</button>
+        <button class="btn" data-cat="moment">a moment</button>
+      </div>
+    </div>`;
+  wireTopBar();
+  document.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => startNewRound(b.dataset.cat));
+  afterRender();
+}
+
+function renderCompose() {
+  const c = state.compose;
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="wordmark-block">
+      ${wordmarkHtml()}
+      <div class="tagline">you know you know</div>
+    </div>
+    <div class="round-header">
+      <div class="setter-cat">your turn · ${categoryLabel(c.category)}</div>
+    </div>
+    <div class="compose-screen">
+      <div class="compose-block">
+        <div class="compose-label">the answer · only you see this</div>
+        <input class="compose-input compose-answer-input ${c.answer?'with-text':''}" id="c-answer" type="text" value="${escape(c.answer)}" placeholder="who or what is it?" />
+      </div>
+      ${[0,1,2,3,4].map(i => `
+        <div class="compose-block">
+          <div class="compose-label">hint 0${i+1} · ${SLOT_GUIDANCE[i]}</div>
+          <input class="compose-input ${c.drafts[i]?'with-text':''}" data-pos="${i+1}" type="text" value="${escape(c.drafts[i])}" placeholder="one word…" />
+        </div>
+      `).join('')}
+      <div class="compose-actions">
+        <button class="btn btn-ghost" id="c-abandon">throw out</button>
+        <button class="btn" id="c-submit">submit</button>
+      </div>
+    </div>`;
+  wireTopBar();
+  const ans = document.getElementById('c-answer');
+  ans.addEventListener('input', () => { c.answer = ans.value; });
+  ans.addEventListener('blur', saveComposeDraft);
+  document.querySelectorAll('.compose-input[data-pos]').forEach(el => {
+    el.addEventListener('input', () => { c.drafts[parseInt(el.dataset.pos) - 1] = el.value; });
+    el.addEventListener('blur', saveComposeDraft);
+  });
+  document.getElementById('c-abandon').onclick = abandonDraft;
+  document.getElementById('c-submit').onclick = async () => {
+    if (!confirm('Submit round? Hint 1 drops immediately.')) return;
+    await submitRound();
+  };
+  afterRender();
+}
+
+function renderReveal() {
+  const r = state.activeRound;
+  const isSetter = r.setter_id === state.user.id;
+  const winner = state.members.find(m => m.id === r.solved_by);
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="reveal-header">
+      <div class="reveal-eyebrow">round ${r.round_number} · ${r.status === 'solved' ? `solved on hint ${r.solved_on_hint}` : 'unsolved'}</div>
+      <div class="reveal-answer">${escape(r.answer)}</div>
+    </div>
+    <div class="reveal-hints">
+      ${[1,2,3,4,5].map(pos => {
+        const h = state.hints.find(x => x.position === pos);
+        const unlit = !h?.unlocked_at;
+        return `
+          <div class="reveal-hint">
+            <span class="num">0${pos}</span>
+            <span class="word ${unlit?'unlit':''}">${unlit ? '— never written —' : escape(h.text)}</span>
+          </div>
+          ${h ? (h.annotation
+            ? `<div class="annotation ${isSetter?'editable':''}" data-hid="${h.id}">${escape(h.annotation)}</div>`
+            : (isSetter ? `<div class="annotation empty editable" data-hid="${h.id}">+ add a note</div>` : '')) : ''}`;
+      }).join('')}
+    </div>
+    <div class="winner-line">
+      ${r.status === 'solved' ? `solved by<span class="name">${escape(winner?.display_name || '?')}</span>sets next round` : `no one solved it · try again next round`}
+    </div>
+    <div style="text-align:center;padding:0 32px 32px">
+      <button class="btn" id="next-round">start next round</button>
+    </div>`;
+  wireTopBar();
+  document.querySelectorAll('.annotation.editable').forEach(el => {
+    el.onclick = () => {
+      const cur = el.classList.contains('empty') ? '' : el.textContent.replace(/^—\s*/, '');
+      const v = prompt('annotation', cur);
+      if (v !== null) saveAnnotation(el.dataset.hid, v.trim());
+    };
+  });
+  document.getElementById('next-round').onclick = async () => {
+    state.activeRound = null; state.view = 'home'; render();
+  };
+  afterRender();
+}
+
+function renderArchive() {
+  const cur = state.groups.find(g => g.id === state.currentGroupId);
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="wordmark-block"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.3em;text-transform:uppercase;color:var(--ink-faint);padding-top:8px">the archive · ${state.archive.length} rounds</div></div>
+    <div class="archive-list">
+      ${state.archive.length === 0 ? '<div style="text-align:center;color:var(--ink-faint);font-style:italic;padding:40px 0">no rounds yet</div>' :
+        state.archive.map(r => `
+        <div class="archive-entry" data-rid="${r.id}">
+          <span class="entry-num">${String(r.round_number).padStart(3,'0')}</span>
+          <div class="entry-mid">
+            <span class="entry-answer">${escape(r.answer)}</span>
+            <span class="entry-meta">${escape(r.category)} · ${escape(r.profiles?.display_name || '?')}</span>
+          </div>
+          <div class="entry-stat">${r.status === 'solved' ? `0${r.solved_on_hint}<span class="small">hints</span>` : `<span class="small">unsolved</span>`}</div>
+        </div>`).join('')}
+    </div>`;
+  wireTopBar();
+  document.querySelectorAll('.archive-entry').forEach(el => {
+    el.onclick = async () => {
+      const rid = el.dataset.rid;
+      const r = state.archive.find(x => x.id === rid);
+      state.activeRound = r;
+      await loadHints(rid);
+      state.view = 'reveal'; render();
+    };
+  });
+  afterRender();
+}
+
+window.addEventListener('resize', () => placeAllDots());
+
+init();
+</script>
+</body>
+</html>

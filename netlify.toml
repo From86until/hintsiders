@@ -1,0 +1,9 @@
+# netlify.toml
+[build]
+  publish = "public"
+  command = "node inject-env.js"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
