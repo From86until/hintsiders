@@ -33,6 +33,8 @@
 
   /* WORDMARK — JS positions the burgundy i-tittle */
   .wordmark-block { text-align: center; padding: 18px 0 6px; }
+  .wordmark-block .home-mark { width: 56px; height: 56px; display: block; margin: 0 auto -2px; }
+  .wordmark-block .home-mark.small { width: 44px; height: 44px; }
   .wordmark-display {
     font-family: 'Caveat', cursive;
     font-weight: 600;
@@ -74,7 +76,35 @@
   .guess-input { width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--ink-soft); padding: 4px 0 8px; font-family: 'Caveat', cursive; font-size: 28px; color: var(--pen-blue); outline: none; }
   .guess-input::placeholder { color: var(--ink-ghost); font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 18px; }
   .guess-input:disabled { opacity: 0.5; }
-  .guess-help { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.15em; margin-top: 8px; text-transform: uppercase; }
+  .guess-help { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-faint); letter-spacing: 0.15em; text-transform: uppercase; }
+  .guess-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 12px; }
+  .lock-btn { background: var(--ink); color: var(--paper); border: none; padding: 8px 16px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; cursor: pointer; border-radius: 2px; }
+  .lock-btn:hover:not(:disabled) { background: var(--burgundy); }
+  .lock-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Drop-interval toggle on compose screen */
+  .interval-toggle { display: flex; gap: 8px; }
+  .interval-opt { flex: 1; background: transparent; border: 1px solid var(--rule); padding: 10px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; border-radius: 2px; transition: all 0.15s; }
+  .interval-opt:hover { border-color: var(--ink-soft); color: var(--ink); }
+  .interval-opt.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* Players' status rows in the feed (replaces the old guess-row layout) */
+  .players-status { padding: 4px 0; }
+  .player-block { padding: 6px 0 8px; border-bottom: 1px dotted var(--ink-ghost); }
+  .player-block:last-child { border-bottom: none; }
+  .player-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; gap: 12px; }
+  .player-row .player-name { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-soft); min-width: 70px; flex-shrink: 0; }
+  .player-row .player-state { flex: 1; font-family: 'Caveat', cursive; font-size: 22px; color: var(--pen-blue); }
+  .player-row .player-state.pending { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: var(--ink-faint); }
+  .player-row .player-state.wrong { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--ink-ghost); }
+  .player-row .player-state.correct { color: var(--burgundy); font-style: italic; }
+  /* History of past wrong guesses across earlier hints */
+  .guess-history { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: 82px; padding: 0 0 4px; }
+  .history-item { display: inline-flex; align-items: baseline; gap: 6px; }
+  .history-item .history-hint { font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-faint); }
+  .history-item .history-text { font-family: 'Caveat', cursive; font-size: 16px; }
+  .history-item .history-text.wrong { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--ink-ghost); }
+  .history-item .history-text.correct { color: var(--burgundy); font-style: italic; }
 
   .feed { padding: 14px 36px 32px; }
   .guess-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; gap: 12px; }
@@ -180,7 +210,7 @@ const state = {
   guesses: [],
   archive: [],
   members: [],
-  compose: { answer: '', category: 'person', drafts: ['','','','',''] },
+  compose: { answer: '', category: 'person', drafts: ['','','','',''], dropInterval: 24 },
   switcherOpen: false,
 };
 
@@ -215,6 +245,22 @@ const MARK_SVG = (size = 24, strokeBase = 3.4) => `
   <ellipse class="knob" stroke-width="${(strokeBase * 0.6).toFixed(2)}" cx="42" cy="61" rx="${size >= 60 ? 2 : 2.6}" ry="${size >= 60 ? 1.7 : 2.2}"/>
   ${size >= 60 ? `<circle fill="var(--pen-blue)" cx="76" cy="35" r="0.6" opacity="0.5"/>` : ''}
 </svg>`;
+
+// Larger mark for use above the wordmark on home screens — uses class home-mark
+const MARK_SVG_HOME = (size = 56) => `
+<svg class="home-mark" width="${size}" height="${size}" viewBox="0 0 120 120">
+  <path class="ink-stroke" stroke-width="2.6" d="M 41 32 Q 26 39 28 58 Q 27 74 39 83 L 35 98 L 89 96 L 84 78 Q 98 71 94 51 Q 97 30 73 25 Q 51 22 41 32 Q 43 31 42 33"/>
+  <path class="ink-stroke" stroke-width="2" d="M 30 48 L 31 72 L 47 70 L 45 47 L 30 49"/>
+  <path class="ink-stroke" stroke-width="1.4" opacity="0.5" d="M 31 49 L 32 71 L 46 70"/>
+  <ellipse class="knob" stroke-width="1.4" cx="42" cy="61" rx="2" ry="1.7"/>
+  <circle fill="var(--pen-blue)" cx="76" cy="35" r="0.6" opacity="0.5"/>
+</svg>`;
+
+// "Mike" -> "Mike's", "Chris" -> "Chris's" (simple — names ending in s also get 's; that's fine for first names)
+function possessive(name) {
+  if (!name) return 'their';
+  return `${name}'s`;
+}
 
 // ============================================================
 // WORDMARK
@@ -279,11 +325,19 @@ async function signOut() { await supabase.auth.signOut(); }
 // ============================================================
 async function loadGroups() {
   const { data: memberships } = await supabase.from('group_members').select('group_id, groups(*)').eq('profile_id', state.user.id);
-  state.groups = (memberships || []).map(m => m.groups).filter(Boolean);
+  // Filter out archived groups so they no longer appear in the switcher
+  state.groups = (memberships || []).map(m => m.groups).filter(g => g && !g.archived);
   if (state.groups.length === 0) { state.view = 'no-groups'; render(); return; }
+  // Default to last-viewed group from localStorage if present and valid; otherwise first group
+  const lastSeen = localStorage.getItem('hintsiders.lastGroup');
   if (!state.currentGroupId || !state.groups.find(g => g.id === state.currentGroupId)) {
-    state.currentGroupId = state.groups[0].id;
+    if (lastSeen && state.groups.find(g => g.id === lastSeen)) {
+      state.currentGroupId = lastSeen;
+    } else {
+      state.currentGroupId = state.groups[0].id;
+    }
   }
+  localStorage.setItem('hintsiders.lastGroup', state.currentGroupId);
   await loadGroupContext();
 }
 async function createGroup(name, hour, tz) {
@@ -291,6 +345,7 @@ async function createGroup(name, hour, tz) {
   if (error) { toast(error.message); return; }
   await supabase.from('group_members').insert({ group_id: g.id, profile_id: state.user.id });
   state.currentGroupId = g.id;
+  localStorage.setItem('hintsiders.lastGroup', g.id);
   await loadGroups();
 }
 async function joinGroup(code) {
@@ -298,6 +353,13 @@ async function joinGroup(code) {
   if (error || !g) { toast('group not found'); return; }
   await supabase.from('group_members').insert({ group_id: g.id, profile_id: state.user.id });
   state.currentGroupId = g.id;
+  localStorage.setItem('hintsiders.lastGroup', g.id);
+  await loadGroups();
+}
+async function archiveGroup(groupId) {
+  if (!confirm('Archive this group? It will be hidden from your group list. You can unarchive from any future "view archived" option.')) return;
+  await supabase.from('groups').update({ archived: true }).eq('id', groupId);
+  if (state.currentGroupId === groupId) state.currentGroupId = null;
   await loadGroups();
 }
 async function loadGroupContext() {
@@ -313,6 +375,7 @@ async function loadGroupContext() {
     state.compose.answer = draft.answer === 'PENDING' ? '' : draft.answer;
     state.compose.category = draft.category;
     state.compose.drafts = [0,1,2,3,4].map(i => state.hints.find(h => h.position === i+1)?.text ?? '');
+    state.compose.dropInterval = draft.drop_interval_hours || 24;
     state.view = 'compose';
   } else if (active) {
     state.activeRound = active;
@@ -375,17 +438,25 @@ async function startNewRound(category) {
   const { data: r, error } = await supabase.from('rounds').insert({
     group_id: state.currentGroupId, setter_id: state.user.id, round_number: nextNum,
     category, answer: 'PENDING', status: 'drafting',
+    drop_interval_hours: 24,
   }).select().single();
   if (error) { toast(error.message); return; }
   state.activeRound = r;
-  state.compose = { answer: '', category, drafts: ['','','','',''] };
+  state.compose = { answer: '', category, drafts: ['','','','',''], dropInterval: 24 };
   state.hints = [];
   state.view = 'compose';
   render();
 }
 async function saveComposeDraft() {
-  if (state.compose.answer.trim()) {
-    await supabase.from('rounds').update({ answer: state.compose.answer.trim() }).eq('id', state.activeRound.id);
+  // Save answer + drop interval if changed
+  const updates = {};
+  if (state.compose.answer.trim()) updates.answer = state.compose.answer.trim();
+  if (state.compose.dropInterval && state.compose.dropInterval !== state.activeRound.drop_interval_hours) {
+    updates.drop_interval_hours = state.compose.dropInterval;
+    state.activeRound.drop_interval_hours = state.compose.dropInterval;
+  }
+  if (Object.keys(updates).length) {
+    await supabase.from('rounds').update(updates).eq('id', state.activeRound.id);
   }
   for (let i = 0; i < 5; i++) {
     const text = state.compose.drafts[i].trim();
@@ -415,15 +486,41 @@ async function abandonDraft() {
   if (!confirm('Throw out this draft?')) return;
   await supabase.from('rounds').delete().eq('id', state.activeRound.id);
   state.activeRound = null;
-  state.compose = { answer: '', category: 'person', drafts: ['','','','',''] };
+  state.compose = { answer: '', category: 'person', drafts: ['','','','',''], dropInterval: 24 };
   state.hints = [];
   state.view = 'home';
   render();
 }
 async function submitGuess(text) {
+  // Optimistically add the guess to local state and re-render immediately,
+  // so the user sees their guess locked in without waiting for the server.
+  const optimisticGuess = {
+    id: 'optimistic-' + Date.now(),
+    round_id: state.activeRound.id,
+    guesser_id: state.user.id,
+    hint_index_at_guess: state.activeRound.current_hint_index,
+    text: text,
+    is_correct: false,
+    overridden: false,
+    created_at: new Date().toISOString(),
+    profiles: { display_name: state.profile?.display_name || 'you' },
+    _optimistic: true,
+  };
+  state.guesses.push(optimisticGuess);
+  toast('locked in');
+  render();
+
+  // Now make the actual server call
   const { data, error } = await supabase.rpc('submit_guess', { p_round_id: state.activeRound.id, p_text: text });
-  if (error) { toast(error.message); return; }
+  if (error) {
+    // Roll back the optimistic guess on failure
+    state.guesses = state.guesses.filter(g => g.id !== optimisticGuess.id);
+    toast(error.message);
+    render();
+    return;
+  }
   if (data?.correct) toast('you got it');
+  // Refresh from server to get the real guess record + any round status changes
   await loadGuesses(state.activeRound.id);
   const { data: r } = await supabase.from('rounds').select('*').eq('id', state.activeRound.id).single();
   state.activeRound = r;
@@ -587,6 +684,7 @@ function topBar() {
     <button class="switcher-item" id="sw-join">+ join with code</button>
     <div class="switcher-divider"></div>
     <button class="switcher-item" id="sw-invite">copy invite code</button>
+    <button class="switcher-item" id="sw-archive-group">archive this group</button>
     <button class="switcher-item" id="sw-signout">sign out</button>
   </div>`;
 }
@@ -597,13 +695,22 @@ function wireTopBar() {
   document.getElementById('menu-btn').onclick = () => { state.switcherOpen = !state.switcherOpen; render(); };
   state.groups.forEach(g => {
     const el = document.querySelector(`[data-gid="${g.id}"]`);
-    if (el) el.onclick = async () => { state.currentGroupId = g.id; state.switcherOpen = false; await loadGroupContext(); };
+    if (el) el.onclick = async () => {
+      state.currentGroupId = g.id;
+      localStorage.setItem('hintsiders.lastGroup', g.id);
+      state.switcherOpen = false;
+      await loadGroupContext();
+    };
   });
   const swc = document.getElementById('sw-create'); if (swc) swc.onclick = () => { state.view = 'create-group'; state.switcherOpen = false; render(); };
   const swj = document.getElementById('sw-join'); if (swj) swj.onclick = () => { state.view = 'join-group'; state.switcherOpen = false; render(); };
   const swi = document.getElementById('sw-invite'); if (swi) swi.onclick = () => {
     const cur = state.groups.find(g => g.id === state.currentGroupId);
     if (cur) { navigator.clipboard.writeText(cur.invite_code); toast('code copied'); state.switcherOpen = false; render(); }
+  };
+  const swa = document.getElementById('sw-archive-group'); if (swa) swa.onclick = async () => {
+    state.switcherOpen = false;
+    if (state.currentGroupId) await archiveGroup(state.currentGroupId);
   };
   const sso = document.getElementById('sw-signout'); if (sso) sso.onclick = signOut;
 }
@@ -626,27 +733,35 @@ function renderHome() {
   const r = state.activeRound;
   const isSetter = r.setter_id === state.user.id;
   const setter = state.members.find(m => m.id === r.setter_id);
-  const framing = FRAMINGS[r.category] || r.category;
   const myGuessThisHint = state.guesses.find(g => g.guesser_id === state.user.id && g.hint_index_at_guess === r.current_hint_index);
-  const todayGuesses = state.guesses.filter(g => g.hint_index_at_guess === r.current_hint_index);
+
+  // Players' full guess history across all hints (everyone except setter)
+  const otherMembers = state.members.filter(m => m.id !== r.setter_id);
+  const playerStatus = otherMembers.map(m => {
+    const allGuesses = state.guesses
+      .filter(x => x.guesser_id === m.id)
+      .sort((a, b) => a.hint_index_at_guess - b.hint_index_at_guess);
+    const currentGuess = allGuesses.find(x => x.hint_index_at_guess === r.current_hint_index);
+    return { profile: m, allGuesses, currentGuess };
+  });
 
   $app.innerHTML = `
     ${topBar()}
     <div class="wordmark-block">
+      ${MARK_SVG_HOME(56)}
       ${wordmarkHtml()}
       <div class="tagline">you know you know</div>
       <div class="round-num">round ${r.round_number}</div>
     </div>
     <div class="round-header">
-      <div class="setter-cat"><strong>${escape(setter?.display_name || '…')}</strong> · ${categoryLabel(r.category)}</div>
+      <div class="setter-cat"><strong>${escape(setter?.display_name || '…')}</strong></div>
       <div class="framing">
-        ${escape(setter?.display_name || 'someone')} has something in mind.<br>
-        One hint a day. One guess a day.<br>
-        Try to get <em>inside</em>.
+        ${escape(setter?.display_name || 'someone')} has ${categoryLabel(r.category)} on ${escape(setter?.display_name ? possessive(setter.display_name) : 'their')} mind.<br>
+        See if you can figure out what's <em>inside</em>…
       </div>
     </div>
     <div class="meta-row">
-      <span><strong>day</strong> ${r.current_hint_index} of 5</span>
+      <span><strong>hint</strong> ${r.current_hint_index} of 5</span>
       <span><strong>next hint</strong> ${r.next_unlock_at ? new Date(r.next_unlock_at).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'}) : '—'}</span>
     </div>
     <div class="hints" id="hint-list">
@@ -664,29 +779,54 @@ function renderHome() {
     </div>
     ${isSetter ? '' : `
     <div class="guess-section">
-      <div class="guess-label">your guess · ${myGuessThisHint ? 'used today' : '1 of 1 today'}</div>
+      <div class="guess-label">your guess · ${myGuessThisHint ? 'locked in' : '1 of 1 today'}</div>
       <input class="guess-input" id="guess-input" placeholder="${myGuessThisHint ? '— wait for the next hint —' : 'who is it…'}" ${myGuessThisHint?'disabled':''} />
-      <div class="guess-help">enter to lock in</div>
+      <div class="guess-actions">
+        <span class="guess-help">enter to submit</span>
+        <button class="lock-btn" id="lock-btn" ${myGuessThisHint?'disabled':''}>lock it in →</button>
+      </div>
     </div>`}
     <div class="feed">
-      ${todayGuesses.length === 0 ? `<div style="text-align:center;color:var(--ink-faint);font-style:italic;padding:8px 0">— no guesses yet today —</div>` : todayGuesses.map(g => `
-        <div class="guess-row">
-          <span class="who">${escape(g.profiles?.display_name || '?')}</span>
-          <span class="what ${g.is_correct?'correct':'wrong'}">${escape(g.text)}</span>
-          ${isSetter && !g.is_correct ? `<button class="override-btn" data-gid="${g.id}">count it</button>` : `<span class="when">${relTime(g.created_at)}</span>`}
-        </div>`).join('')}
+      <div class="players-status">
+        ${playerStatus.map(({profile, allGuesses, currentGuess}) => `
+          <div class="player-block">
+            <div class="player-row">
+              <span class="player-name">${escape(profile.display_name || '?')}</span>
+              <span class="player-state ${currentGuess ? (currentGuess.is_correct?'correct':'wrong') : 'pending'}">
+                ${currentGuess ? (currentGuess.is_correct ? '✓ got it' : escape(currentGuess.text)) : '— thinking… —'}
+              </span>
+              ${isSetter && currentGuess && !currentGuess.is_correct ? `<button class="override-btn" data-gid="${currentGuess.id}">count it</button>` : ''}
+            </div>
+            ${allGuesses.length > (currentGuess ? 1 : 0) ? `
+              <div class="guess-history">
+                ${allGuesses.filter(g => g.hint_index_at_guess !== r.current_hint_index).map(g => `
+                  <span class="history-item">
+                    <span class="history-hint">h${g.hint_index_at_guess}</span>
+                    <span class="history-text ${g.is_correct?'correct':'wrong'}">${escape(g.text)}</span>
+                  </span>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `).join('')}
+      </div>
     </div>`;
   wireTopBar();
   if (!isSetter) {
     const inp = document.getElementById('guess-input');
+    const lockBtn = document.getElementById('lock-btn');
+    const submit = async () => {
+      const v = inp.value.trim();
+      if (!v) return;
+      inp.disabled = true;
+      if (lockBtn) lockBtn.disabled = true;
+      await submitGuess(v);
+    };
     if (inp && !myGuessThisHint) {
-      inp.addEventListener('keydown', async e => {
-        if (e.key === 'Enter') {
-          const v = inp.value.trim(); if (!v) return;
-          inp.disabled = true;
-          await submitGuess(v);
-        }
-      });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+    }
+    if (lockBtn && !myGuessThisHint) {
+      lockBtn.addEventListener('click', submit);
     }
   }
   if (isSetter) {
@@ -699,6 +839,7 @@ function renderHomeEmpty() {
   $app.innerHTML = `
     ${topBar()}
     <div class="wordmark-block" style="padding-top:32px">
+      ${MARK_SVG_HOME(56)}
       ${wordmarkHtml()}
       <div class="tagline">you know you know</div>
     </div>
@@ -723,6 +864,7 @@ function renderCompose() {
   $app.innerHTML = `
     ${topBar()}
     <div class="wordmark-block">
+      ${MARK_SVG_HOME(48)}
       ${wordmarkHtml()}
       <div class="tagline">you know you know</div>
     </div>
@@ -740,6 +882,13 @@ function renderCompose() {
           <input class="compose-input ${c.drafts[i]?'with-text':''}" data-pos="${i+1}" type="text" value="${escape(c.drafts[i])}" placeholder="one word…" />
         </div>
       `).join('')}
+      <div class="compose-block">
+        <div class="compose-label">drop a new hint every</div>
+        <div class="interval-toggle">
+          <button class="interval-opt ${c.dropInterval===12?'active':''}" data-interval="12">12 hours</button>
+          <button class="interval-opt ${c.dropInterval===24?'active':''}" data-interval="24">24 hours</button>
+        </div>
+      </div>
       <div class="compose-actions">
         <button class="btn btn-ghost" id="c-abandon">throw out</button>
         <button class="btn" id="c-submit">submit</button>
@@ -753,9 +902,17 @@ function renderCompose() {
     el.addEventListener('input', () => { c.drafts[parseInt(el.dataset.pos) - 1] = el.value; });
     el.addEventListener('blur', saveComposeDraft);
   });
+  document.querySelectorAll('.interval-opt').forEach(b => {
+    b.onclick = async () => {
+      c.dropInterval = parseInt(b.dataset.interval);
+      await saveComposeDraft();
+      render();
+    };
+  });
   document.getElementById('c-abandon').onclick = abandonDraft;
   document.getElementById('c-submit').onclick = async () => {
-    if (!confirm('Submit round? Hint 1 drops immediately.')) return;
+    const intervalLabel = c.dropInterval === 12 ? '12 hours' : '24 hours';
+    if (!confirm(`Submit round? Hint 1 drops immediately, then a new hint every ${intervalLabel}.`)) return;
     await submitRound();
   };
   afterRender();
