@@ -91,6 +91,15 @@
   .interval-opt:hover { border-color: var(--ink-soft); color: var(--ink); }
   .interval-opt.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
+  /* Pronoun toggle (similar to interval but for his/her/their) */
+  .pronoun-toggle { display: flex; gap: 8px; }
+  .pronoun-opt { flex: 1; background: transparent; border: 1px solid var(--rule); padding: 10px 14px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 16px; color: var(--ink-soft); cursor: pointer; border-radius: 2px; transition: all 0.15s; }
+  .pronoun-opt:hover { border-color: var(--ink-soft); color: var(--ink); }
+  .pronoun-opt.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .input-help { font-size: 13px; font-style: italic; color: var(--ink-soft); margin-top: 8px; line-height: 1.5; }
+  .text-input { width: 100%; background: var(--paper); border: 1px solid var(--rule); padding: 10px 12px; font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--ink); outline: none; border-radius: 3px; }
+  .text-input:focus { border-color: var(--ink-soft); }
+
   /* Players' status rows in the feed (replaces the old guess-row layout) */
   .players-status { padding: 4px 0; }
   .player-block { padding: 6px 0 8px; border-bottom: 1px dotted var(--ink-ghost); }
@@ -336,8 +345,8 @@ async function loadProfile() {
   state.profile = data;
   await loadGroups();
 }
-async function saveName(name) {
-  await supabase.from('profiles').upsert({ id: state.user.id, display_name: name });
+async function saveName(name, pronoun) {
+  await supabase.from('profiles').upsert({ id: state.user.id, display_name: name, pronoun: pronoun || 'their' });
   await loadProfile();
 }
 async function sendMagicLink(email) {
@@ -660,6 +669,7 @@ function render() {
   if (state.view === 'reveal') return renderReveal();
   if (state.view === 'archive') return renderArchive();
   if (state.view === 'group-detail') return renderGroupDetail();
+  if (state.view === 'edit-profile') return renderEditProfile();
   $app.innerHTML = '<div class="loading">…</div>';
 }
 
@@ -677,7 +687,7 @@ function renderAuth() {
     <div class="auth-screen">
       <div class="auth-mark">${MARK_SVG(60, 3)}</div>
       ${wordmarkHtml(true)}
-      <p>Five days. Five hints. One guess each.<br>Try to get <em>inside</em>.</p>
+      <p>A friend has something in mind.<br>Make a guess every time a new hint drops.</p>
       <div class="input-block">
         <label>your email</label>
         <input id="email-input" type="email" placeholder="you@example.com" />
@@ -702,12 +712,29 @@ function renderSetName() {
         <label>display name</label>
         <input id="name-input" type="text" placeholder="first name is fine" />
       </div>
+      <div class="input-block">
+        <label>your pronoun</label>
+        <div class="pronoun-toggle">
+          <button class="pronoun-opt" data-pronoun="his">his</button>
+          <button class="pronoun-opt" data-pronoun="her">her</button>
+          <button class="pronoun-opt active" data-pronoun="their">their</button>
+        </div>
+        <div class="input-help">used in: "Michael has a song in mind. See if you can figure out what's in <em>his/her/their</em> head."</div>
+      </div>
       <button class="btn" id="save-name-btn">continue</button>
     </div>`;
+  let pronoun = 'their';
+  document.querySelectorAll('.pronoun-opt').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.pronoun-opt').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      pronoun = b.dataset.pronoun;
+    };
+  });
   document.getElementById('save-name-btn').onclick = async () => {
     const v = document.getElementById('name-input').value.trim();
     if (!v) return;
-    await saveName(v);
+    await saveName(v, pronoun);
   };
   afterRender();
 }
@@ -824,16 +851,10 @@ function wireTopBar() {
   });
   const swc = document.getElementById('sw-create'); if (swc) swc.onclick = () => { state.view = 'create-group'; state.switcherOpen = false; render(); };
   const swj = document.getElementById('sw-join'); if (swj) swj.onclick = () => { state.view = 'join-group'; state.switcherOpen = false; render(); };
-  const swn = document.getElementById('sw-name'); if (swn) swn.onclick = async () => {
+  const swn = document.getElementById('sw-name'); if (swn) swn.onclick = () => {
     state.switcherOpen = false;
-    const v = prompt('change your display name', state.profile?.display_name || '');
-    if (v && v.trim()) {
-      await supabase.from('profiles').update({ display_name: v.trim() }).eq('id', state.user.id);
-      state.profile.display_name = v.trim();
-      toast('name updated');
-      // Re-fetch members so the new name shows everywhere
-      await loadGroupContext();
-    }
+    state.view = 'edit-profile';
+    render();
   };
   const sso = document.getElementById('sw-signout'); if (sso) sso.onclick = signOut;
 }
@@ -872,12 +893,12 @@ function renderHome() {
     ${topBar()}
     <div class="wordmark-block home-icon-block">
       ${MARK_SVG_HOME(96)}
+      ${wordmarkHtml()}
     </div>
     <div class="round-header">
-      <div class="setter-cat"><strong>${escape(setter?.display_name || '…')}</strong></div>
       <div class="framing">
         ${escape(setter?.display_name || 'someone')} has ${categoryLabel(r.category)} in mind.<br>
-        See if you can figure out what's in their head.
+        See if you can figure out what's in ${setter?.pronoun || 'their'} head.
       </div>
     </div>
     <div class="meta-row">
@@ -1107,6 +1128,58 @@ function renderArchive() {
       state.view = 'reveal'; render();
     };
   });
+  afterRender();
+}
+
+function renderEditProfile() {
+  const currentName = state.profile?.display_name || '';
+  const currentPronoun = state.profile?.pronoun || 'their';
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="detail-screen">
+      <div class="detail-eyebrow">your profile</div>
+      <div class="detail-title">${escape(currentName)}</div>
+      <div class="detail-block">
+        <div class="detail-label">display name</div>
+        <input id="ep-name" class="text-input" type="text" value="${escape(currentName)}" />
+      </div>
+      <div class="detail-block">
+        <div class="detail-label">your pronoun</div>
+        <div class="pronoun-toggle">
+          <button class="pronoun-opt ${currentPronoun==='his'?'active':''}" data-pronoun="his">his</button>
+          <button class="pronoun-opt ${currentPronoun==='her'?'active':''}" data-pronoun="her">her</button>
+          <button class="pronoun-opt ${currentPronoun==='their'?'active':''}" data-pronoun="their">their</button>
+        </div>
+      </div>
+      <div class="detail-block">
+        <button class="btn detail-btn full" id="ep-save">save</button>
+        <button class="btn btn-ghost detail-btn full" id="ep-back">← back</button>
+      </div>
+    </div>`;
+  wireTopBar();
+  let pronoun = currentPronoun;
+  document.querySelectorAll('.pronoun-opt').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.pronoun-opt').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      pronoun = b.dataset.pronoun;
+    };
+  });
+  document.getElementById('ep-save').onclick = async () => {
+    const newName = document.getElementById('ep-name').value.trim();
+    if (!newName) { toast('name cannot be empty'); return; }
+    const { error } = await supabase.from('profiles').update({ display_name: newName, pronoun }).eq('id', state.user.id);
+    if (error) { toast('save failed'); console.error(error); return; }
+    state.profile.display_name = newName;
+    state.profile.pronoun = pronoun;
+    toast('profile updated');
+    state.view = 'home';
+    await loadGroupContext();
+  };
+  document.getElementById('ep-back').onclick = () => {
+    state.view = 'home';
+    render();
+  };
   afterRender();
 }
 
