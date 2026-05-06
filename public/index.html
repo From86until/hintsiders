@@ -126,7 +126,7 @@
   .reveal-hint { display: flex; align-items: baseline; gap: 18px; padding: 8px 0; }
   .reveal-hint .num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); width: 18px; }
   .reveal-hint .word { font-family: 'Caveat', cursive; font-size: 28px; color: var(--pen-blue); line-height: 1.1; }
-  .reveal-hint .word.unlit { color: var(--ink-ghost); font-size: 22px; }
+  .reveal-hint .word.unlit { color: var(--ink-ghost); opacity: 0.55; font-style: italic; }
   .annotation { margin: 2px 36px 8px 70px; padding: 6px 0; font-style: italic; font-size: 14px; color: var(--ink-soft); line-height: 1.4; cursor: pointer; }
   .annotation:hover { color: var(--ink); }
   .annotation::before { content: '— '; color: var(--ink-faint); }
@@ -214,7 +214,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = window.SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 
 // ============================================================
 // STATE
@@ -467,9 +473,28 @@ async function loadArchive() {
 // ============================================================
 let channel = null;
 function subscribeToRound(roundId) {
-  if (channel) supabase.removeChannel(channel);
+  if (channel) { try { supabase.removeChannel(channel); } catch (e) {} channel = null; }
   channel = supabase.channel(`round:${roundId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async () => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async (payload) => {
+      const newGuess = payload.new;
+      // Don't toast for our own guesses (we already showed feedback for those)
+      if (newGuess.guesser_id !== state.user.id) {
+        const guesser = state.members.find(m => m.id === newGuess.guesser_id);
+        const name = guesser?.display_name || 'someone';
+        if (newGuess.is_correct) {
+          toast(`${name} got it!`);
+        } else {
+          toast(`${name} guessed`);
+        }
+      }
+      await loadGuesses(roundId);
+      const r = await supabase.from('rounds').select('*').eq('id', roundId).single();
+      state.activeRound = r.data;
+      if (r.data.status !== 'active') { await loadGroupContext(); return; }
+      render();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async () => {
+      // setter override etc — refresh quietly
       await loadGuesses(roundId);
       const r = await supabase.from('rounds').select('*').eq('id', roundId).single();
       state.activeRound = r.data;
@@ -477,8 +502,14 @@ function subscribeToRound(roundId) {
       render();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `id=eq.${roundId}` }, async (p) => {
+      const oldHint = state.activeRound?.current_hint_index || 0;
+      const newHint = p.new.current_hint_index || 0;
       state.activeRound = p.new;
       await loadHints(roundId);
+      // Toast when a new hint just dropped (only if this isn't the moment of solving)
+      if (newHint > oldHint && p.new.status === 'active') {
+        toast(`hint ${newHint} just dropped`);
+      }
       if (p.new.status !== 'active') { await loadGroupContext(); return; }
       render();
     })
@@ -507,12 +538,22 @@ async function saveComposeDraft() {
   // Save answer + drop interval if changed
   const updates = {};
   if (state.compose.answer.trim()) updates.answer = state.compose.answer.trim();
+  let intervalChanged = false;
+  let prevInterval = state.activeRound.drop_interval_hours;
   if (state.compose.dropInterval && state.compose.dropInterval !== state.activeRound.drop_interval_hours) {
     updates.drop_interval_hours = state.compose.dropInterval;
     state.activeRound.drop_interval_hours = state.compose.dropInterval;
+    intervalChanged = true;
   }
   if (Object.keys(updates).length) {
-    await supabase.from('rounds').update(updates).eq('id', state.activeRound.id);
+    const { error } = await supabase.from('rounds').update(updates).eq('id', state.activeRound.id);
+    if (error) {
+      // Roll back the optimistic local change so UI stays honest
+      if (intervalChanged) state.activeRound.drop_interval_hours = prevInterval;
+      toast('save failed — try again');
+      console.error('saveComposeDraft round update failed:', error);
+      return false;
+    }
   }
   for (let i = 0; i < 5; i++) {
     const text = state.compose.drafts[i].trim();
@@ -520,19 +561,23 @@ async function saveComposeDraft() {
     const existing = state.hints.find(h => h.position === i+1);
     if (existing) {
       if (existing.text !== text) {
-        await supabase.from('hints').update({ text }).eq('id', existing.id);
+        const { error } = await supabase.from('hints').update({ text }).eq('id', existing.id);
+        if (error) { toast('hint save failed'); console.error('hint update failed:', error); return false; }
         existing.text = text;
       }
     } else {
-      const { data } = await supabase.from('hints').insert({ round_id: state.activeRound.id, position: i+1, text }).select().single();
+      const { data, error } = await supabase.from('hints').insert({ round_id: state.activeRound.id, position: i+1, text }).select().single();
+      if (error) { toast('hint save failed'); console.error('hint insert failed:', error); return false; }
       if (data) state.hints.push(data);
     }
   }
+  return true;
 }
 async function submitRound() {
   if (!state.compose.answer.trim()) { toast('set the answer first'); return; }
   if (state.compose.drafts.some(d => !d.trim())) { toast('write all 5 hints first'); return; }
-  await saveComposeDraft();
+  const ok = await saveComposeDraft();
+  if (!ok) { toast('could not save — please try again'); return; }
   const { error } = await supabase.rpc('submit_round', { p_round_id: state.activeRound.id });
   if (error) { toast(error.message); return; }
   toast('round live · hint 1 dropped');
@@ -548,8 +593,9 @@ async function abandonDraft() {
   render();
 }
 async function submitGuess(text) {
-  // Optimistically add the guess to local state and re-render immediately,
-  // so the user sees their guess locked in without waiting for the server.
+  // Optimistically show the guess locked in locally so the UI feels instant,
+  // BUT we don't toast 'locked in' until the server confirms — earlier UX was
+  // misleading users into thinking failed guesses had succeeded.
   const optimisticGuess = {
     id: 'optimistic-' + Date.now(),
     round_id: state.activeRound.id,
@@ -563,19 +609,24 @@ async function submitGuess(text) {
     _optimistic: true,
   };
   state.guesses.push(optimisticGuess);
-  toast('locked in');
   render();
 
   // Now make the actual server call
   const { data, error } = await supabase.rpc('submit_guess', { p_round_id: state.activeRound.id, p_text: text });
   if (error) {
-    // Roll back the optimistic guess on failure
+    // Roll back the optimistic guess on failure and surface the error
     state.guesses = state.guesses.filter(g => g.id !== optimisticGuess.id);
-    toast(error.message);
+    toast('guess failed — please try again');
+    console.error('submitGuess failed:', error);
     render();
     return;
   }
-  if (data?.correct) toast('you got it');
+  // Server accepted it — now we can confirm
+  if (data?.correct) {
+    toast('you got it');
+  } else {
+    toast('locked in');
+  }
   // Refresh from server to get the real guess record + any round status changes
   await loadGuesses(state.activeRound.id);
   const { data: r } = await supabase.from('rounds').select('*').eq('id', state.activeRound.id).single();
@@ -973,9 +1024,14 @@ function renderCompose() {
   });
   document.querySelectorAll('.interval-opt').forEach(b => {
     b.onclick = async () => {
-      c.dropInterval = parseInt(b.dataset.interval);
-      await saveComposeDraft();
-      render();
+      const newInterval = parseInt(b.dataset.interval);
+      if (c.dropInterval === newInterval) return;
+      c.dropInterval = newInterval;
+      // Update the visual state immediately so user sees the toggle change
+      document.querySelectorAll('.interval-opt').forEach(el => el.classList.remove('active'));
+      b.classList.add('active');
+      const ok = await saveComposeDraft();
+      if (ok) toast(`hints will drop every ${newInterval} hours`);
     };
   });
   document.getElementById('c-abandon').onclick = abandonDraft;
@@ -1000,11 +1056,14 @@ function renderReveal() {
     <div class="reveal-hints">
       ${[1,2,3,4,5].map(pos => {
         const h = state.hints.find(x => x.position === pos);
+        // Hints not yet unlocked at round end (round ended unsolved before this hint dropped)
+        // Show the text but fade it, so the archive view is informative.
         const unlit = !h?.unlocked_at;
+        const text = h?.text ? escape(h.text) : '— missing —';
         return `
           <div class="reveal-hint">
             <span class="num">0${pos}</span>
-            <span class="word ${unlit?'unlit':''}">${unlit ? '— never written —' : escape(h.text)}</span>
+            <span class="word ${unlit?'unlit':''}">${text}</span>
           </div>`;
       }).join('')}
     </div>
