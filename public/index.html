@@ -35,6 +35,9 @@
   .wordmark-block { text-align: center; padding: 18px 0 6px; }
   .wordmark-block .home-mark { width: 56px; height: 56px; display: block; margin: 0 auto -2px; }
   .wordmark-block .home-mark.small { width: 44px; height: 44px; }
+  /* Simplified home icon block — just the door, larger */
+  .home-icon-block { padding: 28px 0 4px; }
+  .home-icon-block .home-mark { width: 96px; height: 96px; }
   .wordmark-display {
     font-family: 'Caveat', cursive;
     font-weight: 600;
@@ -172,10 +175,27 @@
   .toast.show { opacity: 1; }
   .group-switcher { position: absolute; top: 56px; left: 22px; right: 22px; background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; box-shadow: 0 12px 30px rgba(0,0,0,0.1); z-index: 20; padding: 8px 0; display: none; }
   .group-switcher.open { display: block; }
+  .switcher-row { display: flex; align-items: center; }
+  .switcher-row .switcher-item { flex: 1; }
+  .switcher-manage { background: none; border: none; color: var(--ink-faint); font-size: 16px; padding: 8px 14px; cursor: pointer; border-radius: 4px; }
+  .switcher-manage:hover { color: var(--burgundy); background: rgba(122, 36, 24, 0.05); }
   .switcher-item { display: block; width: 100%; text-align: left; background: none; border: none; padding: 10px 18px; font-family: 'Cormorant Garamond', serif; font-size: 16px; color: var(--ink); cursor: pointer; font-style: italic; }
   .switcher-item:hover { background: var(--paper); color: var(--burgundy); }
   .switcher-item.active { color: var(--burgundy); }
   .switcher-divider { height: 1px; background: var(--rule); margin: 6px 0; }
+
+  /* Group detail / manage screen */
+  .detail-screen { padding: 32px 32px 60px; }
+  .detail-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-faint); text-align: center; margin-bottom: 8px; }
+  .detail-title { font-family: 'Caveat', cursive; font-size: 44px; font-weight: 600; color: var(--ink); text-align: center; margin-bottom: 36px; }
+  .detail-block { margin-bottom: 28px; }
+  .detail-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px; }
+  .detail-row { display: flex; align-items: center; gap: 10px; }
+  .invite-code { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 10px 14px; border-radius: 3px; letter-spacing: 0.05em; }
+  .detail-btn { margin-top: 8px; }
+  .detail-btn.full { display: block; width: 100%; text-align: center; }
+  .detail-btn.danger { color: var(--burgundy); border-color: rgba(122, 36, 24, 0.3); }
+  .detail-btn.danger:hover { background: var(--burgundy); color: var(--paper); border-color: var(--burgundy); }
 
   .ink-stroke { stroke: var(--pen-blue); fill: none; stroke-linecap: round; stroke-linejoin: round; }
   .knob { fill: var(--burgundy); stroke: var(--burgundy); }
@@ -212,6 +232,7 @@ const state = {
   members: [],
   compose: { answer: '', category: 'person', drafts: ['','','','',''], dropInterval: 24 },
   switcherOpen: false,
+  manageGroupId: null,
 };
 
 // ============================================================
@@ -362,8 +383,43 @@ async function archiveGroup(groupId) {
   if (state.currentGroupId === groupId) state.currentGroupId = null;
   await loadGroups();
 }
+
+async function leaveGroup(groupId) {
+  if (!confirm('Leave this group? You will stop seeing it. Other members can keep playing.')) return;
+  await supabase.from('group_members').delete().eq('group_id', groupId).eq('profile_id', state.user.id);
+  if (state.currentGroupId === groupId) state.currentGroupId = null;
+  state.manageGroupId = null;
+  state.view = 'home';
+  await loadGroups();
+  toast('left group');
+}
+
+async function deleteGroup(groupId) {
+  const g = state.groups.find(x => x.id === groupId);
+  const name = g?.name || 'this group';
+  if (!confirm(`Permanently delete "${name}" for everyone? All rounds, hints, and guesses will be lost. This cannot be undone.`)) return;
+  if (!confirm(`Final confirm — delete "${name}" forever?`)) return;
+  // Delete in order: guesses → hints → rounds → group_members → groups
+  // (foreign keys cascade in our schema, but doing it explicitly is safer)
+  await supabase.from('groups').delete().eq('id', groupId);
+  if (state.currentGroupId === groupId) state.currentGroupId = null;
+  state.manageGroupId = null;
+  state.view = 'home';
+  await loadGroups();
+  toast('group deleted');
+}
 async function loadGroupContext() {
   const gid = state.currentGroupId;
+  // Reset state from the previous group so we don't render stale data
+  state.activeRound = null;
+  state.hints = [];
+  state.guesses = [];
+  state.members = [];
+  state.archive = [];
+  state.compose = { answer: '', category: 'person', drafts: ['','','','',''], dropInterval: 24 };
+  // Tear down any realtime subscription from a previous group
+  if (channel) { try { supabase.removeChannel(channel); } catch (e) {} channel = null; }
+
   const { data: mems } = await supabase.from('group_members').select('profile_id, profiles(*)').eq('group_id', gid);
   state.members = (mems || []).map(m => m.profiles).filter(Boolean);
   const { data: draft } = await supabase.from('rounds').select('*').eq('group_id', gid).eq('setter_id', state.user.id).eq('status', 'drafting').maybeSingle();
@@ -552,6 +608,7 @@ function render() {
   if (state.view === 'compose') return renderCompose();
   if (state.view === 'reveal') return renderReveal();
   if (state.view === 'archive') return renderArchive();
+  if (state.view === 'group-detail') return renderGroupDetail();
   $app.innerHTML = '<div class="loading">…</div>';
 }
 
@@ -678,13 +735,17 @@ function topBar() {
     </div>
   </div>
   <div class="group-switcher ${state.switcherOpen?'open':''}">
-    ${state.groups.map(g => `<button class="switcher-item ${g.id===state.currentGroupId?'active':''}" data-gid="${g.id}">${escape(g.name)}</button>`).join('')}
+    ${state.groups.map(g => `
+      <div class="switcher-row">
+        <button class="switcher-item ${g.id===state.currentGroupId?'active':''}" data-gid="${g.id}">${escape(g.name)}</button>
+        <button class="switcher-manage" data-manage-gid="${g.id}" title="manage group">⚙</button>
+      </div>
+    `).join('')}
     <div class="switcher-divider"></div>
     <button class="switcher-item" id="sw-create">+ create a group</button>
     <button class="switcher-item" id="sw-join">+ join with code</button>
     <div class="switcher-divider"></div>
-    <button class="switcher-item" id="sw-invite">copy invite code</button>
-    <button class="switcher-item" id="sw-archive-group">archive this group</button>
+    <button class="switcher-item" id="sw-name">change my name</button>
     <button class="switcher-item" id="sw-signout">sign out</button>
   </div>`;
 }
@@ -701,16 +762,27 @@ function wireTopBar() {
       state.switcherOpen = false;
       await loadGroupContext();
     };
+    const m = document.querySelector(`[data-manage-gid="${g.id}"]`);
+    if (m) m.onclick = (e) => {
+      e.stopPropagation();
+      state.manageGroupId = g.id;
+      state.switcherOpen = false;
+      state.view = 'group-detail';
+      render();
+    };
   });
   const swc = document.getElementById('sw-create'); if (swc) swc.onclick = () => { state.view = 'create-group'; state.switcherOpen = false; render(); };
   const swj = document.getElementById('sw-join'); if (swj) swj.onclick = () => { state.view = 'join-group'; state.switcherOpen = false; render(); };
-  const swi = document.getElementById('sw-invite'); if (swi) swi.onclick = () => {
-    const cur = state.groups.find(g => g.id === state.currentGroupId);
-    if (cur) { navigator.clipboard.writeText(cur.invite_code); toast('code copied'); state.switcherOpen = false; render(); }
-  };
-  const swa = document.getElementById('sw-archive-group'); if (swa) swa.onclick = async () => {
+  const swn = document.getElementById('sw-name'); if (swn) swn.onclick = async () => {
     state.switcherOpen = false;
-    if (state.currentGroupId) await archiveGroup(state.currentGroupId);
+    const v = prompt('change your display name', state.profile?.display_name || '');
+    if (v && v.trim()) {
+      await supabase.from('profiles').update({ display_name: v.trim() }).eq('id', state.user.id);
+      state.profile.display_name = v.trim();
+      toast('name updated');
+      // Re-fetch members so the new name shows everywhere
+      await loadGroupContext();
+    }
   };
   const sso = document.getElementById('sw-signout'); if (sso) sso.onclick = signOut;
 }
@@ -747,17 +819,14 @@ function renderHome() {
 
   $app.innerHTML = `
     ${topBar()}
-    <div class="wordmark-block">
-      ${MARK_SVG_HOME(56)}
-      ${wordmarkHtml()}
-      <div class="tagline">you know you know</div>
-      <div class="round-num">round ${r.round_number}</div>
+    <div class="wordmark-block home-icon-block">
+      ${MARK_SVG_HOME(96)}
     </div>
     <div class="round-header">
       <div class="setter-cat"><strong>${escape(setter?.display_name || '…')}</strong></div>
       <div class="framing">
-        ${escape(setter?.display_name || 'someone')} has ${categoryLabel(r.category)} on ${escape(setter?.display_name ? possessive(setter.display_name) : 'their')} mind.<br>
-        See if you can figure out what's <em>inside</em>…
+        ${escape(setter?.display_name || 'someone')} has ${categoryLabel(r.category)} in mind.<br>
+        See if you can figure out what's in their head.
       </div>
     </div>
     <div class="meta-row">
@@ -936,10 +1005,7 @@ function renderReveal() {
           <div class="reveal-hint">
             <span class="num">0${pos}</span>
             <span class="word ${unlit?'unlit':''}">${unlit ? '— never written —' : escape(h.text)}</span>
-          </div>
-          ${h ? (h.annotation
-            ? `<div class="annotation ${isSetter?'editable':''}" data-hid="${h.id}">${escape(h.annotation)}</div>`
-            : (isSetter ? `<div class="annotation empty editable" data-hid="${h.id}">+ add a note</div>` : '')) : ''}`;
+          </div>`;
       }).join('')}
     </div>
     <div class="winner-line">
@@ -949,13 +1015,6 @@ function renderReveal() {
       <button class="btn" id="next-round">start next round</button>
     </div>`;
   wireTopBar();
-  document.querySelectorAll('.annotation.editable').forEach(el => {
-    el.onclick = () => {
-      const cur = el.classList.contains('empty') ? '' : el.textContent.replace(/^—\s*/, '');
-      const v = prompt('annotation', cur);
-      if (v !== null) saveAnnotation(el.dataset.hid, v.trim());
-    };
-  });
   document.getElementById('next-round').onclick = async () => {
     state.activeRound = null; state.view = 'home'; render();
   };
@@ -989,6 +1048,47 @@ function renderArchive() {
       state.view = 'reveal'; render();
     };
   });
+  afterRender();
+}
+
+function renderGroupDetail() {
+  const g = state.groups.find(x => x.id === state.manageGroupId);
+  if (!g) { state.view = 'home'; render(); return; }
+  const isCreator = g.created_by === state.user.id;
+  $app.innerHTML = `
+    ${topBar()}
+    <div class="detail-screen">
+      <div class="detail-eyebrow">manage group</div>
+      <div class="detail-title">${escape(g.name)}</div>
+      <div class="detail-block">
+        <div class="detail-label">invite code</div>
+        <div class="detail-row">
+          <code class="invite-code">${escape(g.invite_code)}</code>
+          <button class="btn btn-ghost detail-btn" id="d-copy">copy</button>
+        </div>
+      </div>
+      <div class="detail-block">
+        <div class="detail-label">danger zone</div>
+        <button class="btn btn-ghost detail-btn full" id="d-leave">leave this group</button>
+        ${isCreator ? `<button class="btn btn-ghost detail-btn full danger" id="d-delete">delete group for everyone</button>` : ''}
+      </div>
+      <div class="detail-block">
+        <button class="btn btn-ghost detail-btn full" id="d-back">← back</button>
+      </div>
+    </div>`;
+  wireTopBar();
+  document.getElementById('d-copy').onclick = () => {
+    navigator.clipboard.writeText(g.invite_code);
+    toast('code copied');
+  };
+  document.getElementById('d-leave').onclick = () => leaveGroup(g.id);
+  const del = document.getElementById('d-delete');
+  if (del) del.onclick = () => deleteGroup(g.id);
+  document.getElementById('d-back').onclick = () => {
+    state.manageGroupId = null;
+    state.view = 'home';
+    render();
+  };
   afterRender();
 }
 
