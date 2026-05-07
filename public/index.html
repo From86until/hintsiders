@@ -64,6 +64,9 @@
 
   .meta-row { display: flex; justify-content: space-between; padding: 14px 32px; margin-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
   .meta-row strong { color: var(--ink-soft); font-weight: 500; }
+  .nudge-row { text-align: center; padding: 10px 32px 4px; }
+  .nudge-btn { background: transparent; border: none; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; padding: 4px 8px; }
+  .nudge-btn:hover { color: var(--burgundy); }
 
   .hints { padding: 16px 36px 20px; }
   .hint-line { display: flex; align-items: baseline; gap: 18px; padding: 16px 0; min-height: 56px; }
@@ -298,6 +301,32 @@ function possessive(name) {
   return `${name}'s`;
 }
 
+// Native share (or clipboard fallback) — opens the OS share sheet so the user
+// can drop a quick message into their group chat.
+async function nudgeFriends(message) {
+  const url = 'https://hintsiders.com';
+  const shareData = { title: 'hintsiders', text: message, url };
+  // Web Share API works on iOS Safari, Android Chrome, and modern desktop
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (e) {
+      // User cancelled the share sheet — that's fine, do nothing
+      if (e.name === 'AbortError') return;
+      // Other errors fall through to clipboard
+    }
+  }
+  // Fallback: copy to clipboard
+  try {
+    await navigator.clipboard.writeText(`${message} ${url}`);
+    toast('copied — paste it in your group chat');
+  } catch (e) {
+    toast('share not supported on this device');
+    console.error('share failed:', e);
+  }
+}
+
 // ============================================================
 // WORDMARK
 // ============================================================
@@ -484,18 +513,8 @@ let channel = null;
 function subscribeToRound(roundId) {
   if (channel) { try { supabase.removeChannel(channel); } catch (e) {} channel = null; }
   channel = supabase.channel(`round:${roundId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async (payload) => {
-      const newGuess = payload.new;
-      // Don't toast for our own guesses (we already showed feedback for those)
-      if (newGuess.guesser_id !== state.user.id) {
-        const guesser = state.members.find(m => m.id === newGuess.guesser_id);
-        const name = guesser?.display_name || 'someone';
-        if (newGuess.is_correct) {
-          toast(`${name} got it!`);
-        } else {
-          toast(`${name} guessed`);
-        }
-      }
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `round_id=eq.${roundId}` }, async () => {
+      // Someone (us or another player) submitted a guess — refresh quietly
       await loadGuesses(roundId);
       const r = await supabase.from('rounds').select('*').eq('id', roundId).single();
       state.activeRound = r.data;
@@ -511,14 +530,8 @@ function subscribeToRound(roundId) {
       render();
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rounds', filter: `id=eq.${roundId}` }, async (p) => {
-      const oldHint = state.activeRound?.current_hint_index || 0;
-      const newHint = p.new.current_hint_index || 0;
       state.activeRound = p.new;
       await loadHints(roundId);
-      // Toast when a new hint just dropped (only if this isn't the moment of solving)
-      if (newHint > oldHint && p.new.status === 'active') {
-        toast(`hint ${newHint} just dropped`);
-      }
       if (p.new.status !== 'active') { await loadGroupContext(); return; }
       render();
     })
@@ -602,44 +615,20 @@ async function abandonDraft() {
   render();
 }
 async function submitGuess(text) {
-  // Optimistically show the guess locked in locally so the UI feels instant,
-  // BUT we don't toast 'locked in' until the server confirms — earlier UX was
-  // misleading users into thinking failed guesses had succeeded.
-  const optimisticGuess = {
-    id: 'optimistic-' + Date.now(),
-    round_id: state.activeRound.id,
-    guesser_id: state.user.id,
-    hint_index_at_guess: state.activeRound.current_hint_index,
-    text: text,
-    is_correct: false,
-    overridden: false,
-    created_at: new Date().toISOString(),
-    profiles: { display_name: state.profile?.display_name || 'you' },
-    _optimistic: true,
-  };
-  state.guesses.push(optimisticGuess);
-  render();
-
-  // Now make the actual server call
+  // Wait for server confirmation before updating UI. Less snappy by ~300ms,
+  // but eliminates the race where navigation/reload between optimistic update
+  // and confirmation drops the guess from local state.
   const { data, error } = await supabase.rpc('submit_guess', { p_round_id: state.activeRound.id, p_text: text });
   if (error) {
-    // Roll back the optimistic guess on failure and surface the error
-    state.guesses = state.guesses.filter(g => g.id !== optimisticGuess.id);
     toast('guess failed — please try again');
     console.error('submitGuess failed:', error);
-    render();
     return;
   }
-  // Server accepted it — now we can confirm
-  if (data?.correct) {
-    toast('you got it');
-  } else {
-    toast('locked in');
-  }
-  // Refresh from server to get the real guess record + any round status changes
+  // Server saved it — now refresh state from the server (single source of truth)
   await loadGuesses(state.activeRound.id);
   const { data: r } = await supabase.from('rounds').select('*').eq('id', state.activeRound.id).single();
   state.activeRound = r;
+  if (data?.correct) toast('you got it');
   if (r.status !== 'active') { await loadGroupContext(); return; }
   render();
 }
@@ -905,6 +894,9 @@ function renderHome() {
       <span><strong>hint</strong> ${r.current_hint_index} of 5</span>
       <span><strong>next hint</strong> ${r.next_unlock_at ? new Date(r.next_unlock_at).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'}) : '—'}</span>
     </div>
+    <div class="nudge-row">
+      <button class="nudge-btn" id="nudge-btn">↗ nudge friends</button>
+    </div>
     <div class="hints" id="hint-list">
       ${[1,2,3,4,5].map(pos => {
         const h = state.hints.find(x => x.position === pos);
@@ -953,15 +945,35 @@ function renderHome() {
       </div>
     </div>`;
   wireTopBar();
+  // Wire up the nudge button — different message for setter vs guesser
+  const nudge = document.getElementById('nudge-btn');
+  if (nudge) {
+    nudge.onclick = () => {
+      const setterName = state.members.find(m => m.id === r.setter_id)?.display_name || 'someone';
+      let msg;
+      if (isSetter) {
+        msg = `hint ${r.current_hint_index} just dropped on hintsiders — get in there 👀`;
+      } else {
+        msg = `${setterName} dropped hint ${r.current_hint_index} on hintsiders — what's your guess?`;
+      }
+      nudgeFriends(msg);
+    };
+  }
   if (!isSetter) {
     const inp = document.getElementById('guess-input');
     const lockBtn = document.getElementById('lock-btn');
     const submit = async () => {
       const v = inp.value.trim();
       if (!v) return;
+      // Lock the input immediately so the user can't double-submit during the wait
       inp.disabled = true;
-      if (lockBtn) lockBtn.disabled = true;
+      if (lockBtn) {
+        lockBtn.disabled = true;
+        lockBtn.textContent = 'sending…';
+      }
       await submitGuess(v);
+      // After submitGuess returns, render() will already have rebuilt the screen
+      // with the correct locked/unlocked state based on server truth.
     };
     if (inp && !myGuessThisHint) {
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
