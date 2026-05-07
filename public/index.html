@@ -952,9 +952,9 @@ function renderHome() {
       const setterName = state.members.find(m => m.id === r.setter_id)?.display_name || 'someone';
       let msg;
       if (isSetter) {
-        msg = `hint ${r.current_hint_index} just dropped on hintsiders — get in there 👀`;
+        msg = `Hint ${r.current_hint_index} just dropped on hintsiders 👀`;
       } else {
-        msg = `${setterName} dropped hint ${r.current_hint_index} on hintsiders — what's your guess?`;
+        msg = `${setterName} dropped hint ${r.current_hint_index} on hintsiders. Lock in your guess.`;
       }
       nudgeFriends(msg);
     };
